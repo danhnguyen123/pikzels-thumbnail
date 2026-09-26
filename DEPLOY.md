@@ -21,28 +21,31 @@ push main ─► GitHub Actions ─► build-test (docker build + smoke /api/con
 
 ---
 
-## 1) Chuẩn bị server (làm 1 lần)
+## 1) Chuẩn bị server (làm 1 lần) — dùng user `ubuntu` mặc định
 
 ```bash
-# user riêng cho deploy, thêm vào group docker
-sudo adduser --disabled-password deploy
-sudo usermod -aG docker deploy
-sudo mkdir -p /opt/package-studio && sudo chown deploy:deploy /opt/package-studio
+# thêm ubuntu vào group docker (để chạy docker không cần sudo)
+sudo usermod -aG docker ubuntu
+# đăng xuất/đăng nhập lại (hoặc: newgrp docker), rồi test:
+docker ps    # chạy được không cần sudo là OK
+
+# thư mục app
+sudo mkdir -p /opt/package-studio && sudo chown ubuntu:ubuntu /opt/package-studio
 
 # thư mục dữ liệu bền trên Block Volume
 sudo mkdir -p /mnt/media/package-studio/data /mnt/media/package-studio/output
-sudo chown -R deploy:deploy /mnt/media/package-studio
+sudo chown -R ubuntu:ubuntu /mnt/media/package-studio
 
 # clone repo (deploy key read-only, xem mục 5)
-sudo -u deploy git clone git@github.com:danhnguyen123/pikzels-thumbnail.git /opt/package-studio
+git clone git@github.com:danhnguyen123/pikzels-thumbnail.git /opt/package-studio
 ```
 
 ## 2) Tạo `.env` trên server (secrets — chống rò rỉ key)
 
 ```bash
 # copy từ máy bạn lên (KHÔNG commit .env)
-scp .env deploy@<server>:/opt/package-studio/.env
-ssh deploy@<server> 'chmod 600 /opt/package-studio/.env'
+scp .env ubuntu@<server>:/opt/package-studio/.env
+ssh ubuntu@<server> 'chmod 600 /opt/package-studio/.env'
 ```
 
 `.env` chỉ cần secrets + Basic Auth (mọi giá trị production đã nằm trong `.env.production` của repo):
@@ -78,7 +81,7 @@ Mở cổng (mặc định `8000`, hoặc `PUBLISH_PORT` bạn chọn) ở **2 n
 
 Chạy:
 ```bash
-ssh deploy@<server>
+ssh ubuntu@<server>
 cd /opt/package-studio
 docker build --network=host -t package-studio:latest .
 docker compose up -d
@@ -94,14 +97,15 @@ GitHub repo → **Settings → Secrets and variables → Actions** thêm:
 | Secret | Giá trị |
 |---|---|
 | `SSH_HOST` | IP/hostname server |
-| `SSH_USER` | `deploy` |
-| `SSH_KEY`  | private key SSH (khớp public key trong `~deploy/.ssh/authorized_keys`) |
+| `SSH_USER` | `ubuntu` |
+| `SSH_KEY`  | private key SSH bạn đang dùng để đăng nhập server (khớp `~/.ssh/authorized_keys` của ubuntu) |
 | `SSH_PORT` | (tuỳ chọn) mặc định 22 |
 
-Server cần **deploy key read-only** để `git pull`:
+Server cần **deploy key read-only** để `git pull` từ GitHub (khác với key đăng nhập server):
 ```bash
-sudo -u deploy ssh-keygen -t ed25519 -f ~deploy/.ssh/id_ed25519 -N ""
-# thêm nội dung id_ed25519.pub vào GitHub repo → Settings → Deploy keys (Read only)
+ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519 -N ""    # chạy dưới user ubuntu
+cat ~/.ssh/id_ed25519.pub
+# thêm nội dung .pub vào GitHub repo → Settings → Deploy keys (Read only)
 ```
 
 Từ đó, mỗi lần `push` lên `main`/`master`: `.github/workflows/deploy.yml` tự SSH vào server,
