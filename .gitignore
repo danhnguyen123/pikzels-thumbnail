@@ -8,6 +8,9 @@ pikzels_env.py
 docker-compose.override.yml
 data-host/
 
+# backup / export (dữ liệu, không commit — scp lên server thủ công)
+backup/
+
 # frontend
 webui/node_modules/
 webui/dist/
