@@ -1,0 +1,9 @@
+# Đổi tên thành docker-compose.override.yml để test Docker ở LOCAL (Windows/Mac).
+# Compose tự nạp file này, ghi đè volume sang thư mục local (không cần /mnt/media).
+services:
+  package-studio:
+    volumes: !override
+      - ./data-host/data:/app/data
+      - ./data-host/output:/app/output
+    ports: !override
+      - "8000:8000"

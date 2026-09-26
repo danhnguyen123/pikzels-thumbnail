@@ -37,6 +37,7 @@ const dict: Record<Lang, Record<string, string>> = {
     "create.savedN": "Saved {n} image(s).",
     "create.needPrompt": "Prompt required.", "create.needSource": "Source image required (upload or URL).",
     "create.wsError": "WebSocket error.",
+    "create.resultsN": "Today's images ({n})", "create.clear": "Clear list", "create.generatingCount": "generating",
     // edit
     "edit.title": "Edit / inpaint", "edit.srcUrl": "Source image (URL)", "edit.srcImage": "Source image",
     "edit.promptEdit": "Edit prompt",
@@ -102,6 +103,7 @@ const dict: Record<Lang, Record<string, string>> = {
     "create.savedN": "Đã lưu {n} ảnh.",
     "create.needPrompt": "Cần prompt.", "create.needSource": "Cần ảnh gốc (upload hoặc URL).",
     "create.wsError": "WebSocket lỗi.",
+    "create.resultsN": "Ảnh hôm nay ({n})", "create.clear": "Xoá danh sách", "create.generatingCount": "đang tạo",
     "edit.title": "Chỉnh sửa / inpaint", "edit.srcUrl": "Ảnh gốc (URL)", "edit.srcImage": "Ảnh nguồn",
     "edit.promptEdit": "Prompt sửa",
     "edit.maskSupport": "Mask (inpaint) + support image (tùy chọn)",

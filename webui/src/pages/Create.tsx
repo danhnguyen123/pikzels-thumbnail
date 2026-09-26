@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
-import { Download, Star, Save, Loader2, AlertTriangle, Pencil, Sparkles, Upload } from "lucide-react";
+import { Download, Star, Save, Loader2, AlertTriangle, Pencil, Sparkles, Upload, Trash2 } from "lucide-react";
 import { api, type Pikzonality } from "../api";
 import { useConfig, useNav } from "../App";
 import { imgSrc, fileToDataUrl } from "../lib";
-import { Button, Field, Input, Textarea, Select, Card, Spinner, Lightbox, useToast } from "../ui";
+import { Button, Field, Input, Textarea, Select, Card, Lightbox, useToast } from "../ui";
 import { useI18n } from "../i18n";
-import { createStore, useCreateStore, editTarget, refTarget } from "../store";
+import { createStore, useCreateStore, editTarget, refTarget, type GenItem } from "../store";
 
 function usePersisted<T>(key: string, init: T): [T, (v: T) => void] {
   const [v, setV] = useState<T>(() => {
@@ -52,13 +52,13 @@ export default function Create() {
   const supportsPS = model === "pkz_4" || model === "pkz_4_5";
   const personas = pikz.filter((p) => p.mode === "persona");
   const styles = pikz.filter((p) => p.mode === "style");
-  const running = store.status === "running";
+  const generating = store.items.filter((i) => i.loading).length;
 
   function generate() {
     if (source === "Text" && !prompt.trim()) return toast(t("create.needPrompt"), "error");
     if (source === "Image" && !imgUrl && !imgB64) return toast(t("create.needSource"), "error");
-    const meta = { prompt, format: fmt, style: supportsPS ? style || null : null, persona: supportsPS ? persona || null : null };
-    createStore.reset(count, meta);
+    const meta = { prompt, format: fmt, model, style: supportsPS ? style || null : null, persona: supportsPS ? persona || null : null };
+    const ids = createStore.addBatch(count, meta); // tích luỹ, không xoá lô cũ
 
     const ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws/generate`);
     ws.onopen = () => ws.send(JSON.stringify({
@@ -70,50 +70,54 @@ export default function Create() {
     ws.onmessage = (e) => {
       const m = JSON.parse(e.data);
       if (m.type === "item")
-        createStore.setItem(m.index, { loading: false, output: m.output, request_id: m.request_id, model: m.model, prompt_compacted: m.prompt_compacted });
+        createStore.setItem(ids[m.index], { loading: false, output: m.output, request_id: m.request_id, model: m.model, prompt_compacted: m.prompt_compacted });
       else if (m.type === "item_error")
-        createStore.setItem(m.index, { loading: false, error: m.message });
-      else if (m.type === "done") { createStore.done(); ws.close(); }
-      else if (m.type === "error") { toast(m.message, "error"); createStore.done(); ws.close(); }
+        createStore.setItem(ids[m.index], { loading: false, error: m.message });
+      else if (m.type === "done") ws.close();
+      else if (m.type === "error") { toast(m.message, "error"); ws.close(); }
     };
     ws.onerror = () => toast(t("create.wsError"), "error");
   }
 
-  async function download(url: string, i: number) {
+  function saveMeta(it: GenItem) {
+    return { prompt: it.prompt, format: it.format, style: it.style, persona: it.persona,
+             request_id: it.request_id, model: it.model, score: it.score?.main_score ?? null };
+  }
+
+  async function download(it: GenItem) {
+    const url = it.output!;
     const r = await fetch(imgSrc(url));
     const blob = await r.blob();
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = `thumbnail_${i + 1}.png`;
+    a.download = `thumbnail_${it.id}.png`;
     a.click();
     URL.revokeObjectURL(a.href);
-    // Lưu vào Gallery (1 lần / ảnh) để ảnh vừa tải xuất hiện trong Gallery.
-    const it = store.items[i];
-    if (it && !it.saved) {
+    if (!it.saved) {
       try {
-        await api.save({ image_url: url, folder: null, kind: "create",
-          meta: { ...store.meta, request_id: it.request_id, model: it.model, score: it.score?.main_score ?? null } });
-        createStore.setItem(i, { saved: true });
+        await api.save({ image_url: url, folder: null, kind: "create", meta: saveMeta(it) });
+        createStore.setItem(it.id, { saved: true });
       } catch { /* ignore */ }
     }
   }
 
-  async function scoreItem(url: string, i: number) {
-    createStore.setItem(i, { scoring: true });
+  async function scoreItem(it: GenItem) {
+    createStore.setItem(it.id, { scoring: true });
     try {
-      const sc = await api.score({ image_url: url });
-      createStore.setItem(i, { score: sc, scoring: false });
-      const rid = store.items[i]?.request_id;
-      if (rid) api.setHistoryScore(rid, sc.main_score).catch(() => {}); // cập nhật nếu đã lưu
-    } catch (e: any) { createStore.setItem(i, { scoring: false }); toast(e.message, "error"); }
+      const sc = await api.score({ image_url: it.output! });
+      createStore.setItem(it.id, { score: sc, scoring: false });
+      if (it.request_id) api.setHistoryScore(it.request_id, sc.main_score).catch(() => {});
+    } catch (e: any) { createStore.setItem(it.id, { scoring: false }); toast(e.message, "error"); }
   }
 
   async function saveAll() {
-    const done = store.items.filter((it) => it.output);
+    const done = store.items.filter((it) => it.output && !it.saved);
+    if (!done.length) return;
     try {
-      for (const it of done)
-        await api.save({ image_url: it.output, folder: folder || null, kind: "create",
-          meta: { ...store.meta, request_id: it.request_id, model: it.model, score: it.score?.main_score ?? null } });
+      for (const it of done) {
+        await api.save({ image_url: it.output, folder: folder || null, kind: "create", meta: saveMeta(it) });
+        createStore.setItem(it.id, { saved: true });
+      }
       toast(t("create.savedN", { n: done.length }), "success");
     } catch (e: any) { toast(e.message, "error"); }
   }
@@ -191,38 +195,42 @@ export default function Create() {
         </details>
 
         <div className="flex items-center gap-3">
-          <Button variant="primary" onClick={generate} disabled={running}>
-            {running ? <><Spinner /> {t("create.generating")}</> : <><Sparkles size={16} /> {t("create.generate", { n: count })}</>}
+          <Button variant="primary" onClick={generate}>
+            <Sparkles size={16} /> {t("create.generate", { n: count })}
           </Button>
           {(() => {
             const table = cfg?.pricing ? (source === "Image" ? cfg.pricing.recreate : cfg.pricing.thumbnail) : null;
             const unit = table?.[model];
             return unit != null ? <span className="text-sm font-medium text-muted">${(unit * count).toFixed(2)}</span> : null;
           })()}
+          {generating > 0 && (
+            <span className="text-sm text-muted flex items-center gap-1">
+              <Loader2 className="animate-spin" size={14} /> {generating} {t("create.generatingCount")}
+            </span>
+          )}
         </div>
       </Card>
 
       {store.items.length > 0 && (
         <div>
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-lg font-semibold">
-              {t("create.results", { done: store.items.filter((i) => i.output).length, total: store.total })}
-            </h2>
-            {store.status !== "running" && (
-              <div className="flex items-center gap-2">
-                <Input placeholder={t("create.folder")} value={folder}
-                  onChange={(e) => setFolder(e.target.value)} className="w-80" />
-                <Button onClick={saveAll}><Save size={16} /> {t("create.saveAll")}</Button>
-              </div>
-            )}
+          <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+            <h2 className="text-lg font-semibold">{t("create.resultsN", { n: store.items.length })}</h2>
+            <div className="flex items-center gap-2">
+              <Input placeholder={t("create.folder")} value={folder}
+                onChange={(e) => setFolder(e.target.value)} className="w-72" />
+              <Button onClick={saveAll}><Save size={16} /> {t("create.saveAll")}</Button>
+              <Button className="!text-red-400 hover:!bg-red-500/15" onClick={() => createStore.clear()}>
+                <Trash2 size={16} /> {t("create.clear")}
+              </Button>
+            </div>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {store.items.map((it) => (
-              <Card key={it.index} className="p-3">
-                <div className="aspect-video rounded-lg overflow-hidden bg-panel border border-border flex items-center justify-center mb-2">
+              <Card key={it.id} className="p-3">
+                <div className="relative aspect-video rounded-lg overflow-hidden bg-panel border border-border flex items-center justify-center mb-2">
                   {it.loading ? (
                     <div className="flex flex-col items-center text-muted text-sm gap-2">
-                      <Loader2 className="animate-spin" size={22} /> {t("create.genItem", { n: it.index + 1 })}
+                      <Loader2 className="animate-spin" size={22} /> {t("create.generating")}
                     </div>
                   ) : it.error ? (
                     <div className="flex flex-col items-center text-red-400 text-xs gap-1 p-2 text-center">
@@ -232,16 +240,22 @@ export default function Create() {
                     <img src={imgSrc(it.output!)} onClick={() => setPreview(imgSrc(it.output!))}
                       className="w-full h-full object-cover cursor-zoom-in" />
                   )}
+                  {!it.loading && (
+                    <button onClick={() => createStore.remove(it.id)} title={t("create.clear")}
+                      className="absolute top-1.5 right-1.5 p-1 rounded bg-black/50 hover:bg-black/70 text-white">
+                      <Trash2 size={14} />
+                    </button>
+                  )}
                 </div>
                 {it.prompt_compacted && <p className="text-xs text-amber-400 mb-1">{t("common.promptCompacted")}</p>}
                 {it.output && (
                   <div className="flex gap-2">
-                    <Button className="!py-1.5" title={t("nav.edit")}
-                      onClick={() => { editTarget.set(it.output!); nav("Edit"); }}><Pencil size={15} /> {t("nav.edit")}</Button>
-                    <Button className="flex-1 !py-1.5" onClick={() => download(it.output!, it.index)}><Download size={15} /> {t("common.download")}</Button>
-                    <Button className="flex-1 !py-1.5" disabled={it.scoring}
-                      onClick={() => scoreItem(it.output!, it.index)}>
-                      {it.scoring ? <Loader2 size={15} className="animate-spin" /> : <Star size={15} />} {t("score.run")}
+                    <Button className="!py-1.5 !px-2" title={t("nav.edit")}
+                      onClick={() => { editTarget.set(it.output!); nav("Edit"); }}><Pencil size={15} /></Button>
+                    <Button className="flex-1 !py-1.5" onClick={() => download(it)}><Download size={15} /> {t("common.download")}</Button>
+                    <Button className="!py-1.5 !px-2" disabled={it.scoring} title={t("score.run")}
+                      onClick={() => scoreItem(it)}>
+                      {it.scoring ? <Loader2 size={15} className="animate-spin" /> : <Star size={15} />}
                     </Button>
                   </div>
                 )}

@@ -3,6 +3,11 @@ output/
 data/
 pikzels_env.py
 
+# deploy secrets / local docker
+.env
+docker-compose.override.yml
+data-host/
+
 # frontend
 webui/node_modules/
 webui/dist/

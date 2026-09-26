@@ -1,0 +1,18 @@
+# Allowlist: chỉ đưa vào build context những gì image cần.
+**
+
+!.dockerignore
+!Dockerfile
+!requirements-web.txt
+!server.py
+!registry.py
+!pikzels_helper.py
+!ui_utils.py
+!pricing.py
+
+!webui/
+!webui/**
+
+# Loại trừ artifact nặng bên trong webui (đã whitelist ở trên)
+webui/node_modules/
+webui/dist/

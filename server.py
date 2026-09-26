@@ -4,6 +4,8 @@ Chạy:  python -m uvicorn server:app --port 8000
 Hoặc:  python server.py   (tự chạy uvicorn + serve webui/dist)
 """
 import base64
+import os
+import secrets
 from pathlib import Path
 from typing import Optional
 
@@ -19,9 +21,37 @@ from pikzels_helper import PikzelsClient, PikzelsError, MODELS, FORMATS
 
 BASE = Path(__file__).parent
 DIST = BASE / "webui" / "dist"
-OUTPUT_DIR = BASE / "output"
+# Đường dẫn ghi có thể trỏ ra volume (Docker/cloud) qua env; mặc định ./output (local).
+OUTPUT_DIR = Path(os.environ.get("OUTPUT_DIR", str(BASE / "output")))
 
-app = FastAPI(title="Pikzels Studio API")
+app = FastAPI(title="Package Studio API")
+
+# --- Basic Auth (bật khi mở public IP:port) ---
+AUTH_USER = os.environ.get("APP_BASIC_AUTH_USER", "")
+AUTH_PASS = os.environ.get("APP_BASIC_AUTH_PASS", "")
+if not (AUTH_USER and AUTH_PASS):
+    print("[warn] APP_BASIC_AUTH_USER/PASS not set - server has NO auth "
+          "(local only; set user/password before exposing to public).")
+
+
+def _check_basic(header: str) -> bool:
+    if not (AUTH_USER and AUTH_PASS):
+        return True
+    if not header.startswith("Basic "):
+        return False
+    try:
+        u, _, p = base64.b64decode(header[6:]).decode().partition(":")
+    except Exception:  # noqa: BLE001
+        return False
+    return secrets.compare_digest(u, AUTH_USER) and secrets.compare_digest(p, AUTH_PASS)
+
+
+@app.middleware("http")
+async def basic_auth(request, call_next):
+    if not _check_basic(request.headers.get("authorization", "")):
+        return Response("Unauthorized", status_code=401,
+                        headers={"WWW-Authenticate": 'Basic realm="Package Studio"'})
+    return await call_next(request)
 
 try:
     client: Optional[PikzelsClient] = PikzelsClient()
@@ -338,6 +368,10 @@ def history_score_one(hid: int):
 # ---------------------------------------------------------------- WebSocket batch generate
 @app.websocket("/ws/generate")
 async def ws_generate(ws: WebSocket):
+    # Basic Auth cho WebSocket (trình duyệt gửi lại credential đã cache cùng origin).
+    if not _check_basic(ws.headers.get("authorization", "")):
+        await ws.close(code=1008)
+        return
     await ws.accept()
     try:
         req = await ws.receive_json()
@@ -397,4 +431,6 @@ if DIST.exists():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    host = os.environ.get("APP_HOST", "127.0.0.1")   # Docker/public: đặt 0.0.0.0
+    port = int(os.environ.get("APP_PORT", "8000"))
+    uvicorn.run(app, host=host, port=port)

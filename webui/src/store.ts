@@ -37,48 +37,79 @@ export const personasState = makeStore({
 });
 
 export interface GenItem {
-  index: number;
-  output?: string;        // URL Pikzels (proxy khi hiển thị)
+  id: number;
+  createdAt: string;       // ISO — dùng lọc "hôm nay"
+  loading: boolean;
+  output?: string;         // URL Pikzels (proxy khi hiển thị; hết hạn 24h)
   request_id?: string;
   model?: string;
+  prompt?: string;
+  format?: string;
+  style?: string | null;
+  persona?: string | null;
   prompt_compacted?: boolean;
   error?: string;
-  loading: boolean;
   scoring?: boolean;
   saved?: boolean;
   score?: { main_score: number; subscores: Record<string, number>; suggestion?: string };
 }
 
-interface CreateState {
-  status: "idle" | "running" | "done";
-  items: GenItem[];
-  total: number;
-  meta: { prompt?: string; format?: string; style?: string | null; persona?: string | null };
-}
+export type BatchMeta = { prompt?: string; format?: string; model?: string; style?: string | null; persona?: string | null };
 
-let state: CreateState = { status: "idle", items: [], total: 0, meta: {} };
+interface CreateState { items: GenItem[]; }
+
+const LS_KEY = "create_items_v1";
+const today = () => new Date().toISOString().slice(0, 10);
+
+let state: CreateState = { items: [] };
+let nextId = 1;
 const listeners = new Set<() => void>();
+const emit = () => listeners.forEach((l) => l());
 
-function emit() {
-  state = { ...state };
-  listeners.forEach((l) => l());
+function persist() {
+  try { localStorage.setItem(LS_KEY, JSON.stringify({ date: today(), nextId, items: state.items })); } catch { /* ignore */ }
 }
+
+// Khôi phục khi F5: chỉ giữ nếu cùng ngày; bỏ item còn dở (loading) do WebSocket đã đứt.
+(function restore() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return;
+    const d = JSON.parse(raw);
+    if (d.date !== today()) { localStorage.removeItem(LS_KEY); return; } // sang ngày mới -> tự clear
+    const items: GenItem[] = (d.items || []).filter((it: GenItem) => !it.loading)
+      .map((it: GenItem) => ({ ...it, scoring: false }));
+    state = { items };
+    nextId = d.nextId || items.reduce((m, i) => Math.max(m, i.id), 0) + 1;
+  } catch { /* ignore */ }
+})();
 
 export const createStore = {
   get: () => state,
   subscribe(l: () => void) { listeners.add(l); return () => listeners.delete(l); },
-  reset(total: number, meta: CreateState["meta"]) {
-    state = {
-      status: "running", total, meta,
-      items: Array.from({ length: total }, (_, i) => ({ index: i, loading: true })),
-    };
-    emit();
+  // Thêm 1 lô mới (không xoá lô cũ); trả về mảng id theo thứ tự để WebSocket map theo index.
+  addBatch(count: number, meta: BatchMeta): number[] {
+    const ts = new Date().toISOString();
+    const ids: number[] = [];
+    const fresh: GenItem[] = [];
+    for (let k = 0; k < count; k++) {
+      const id = nextId++;
+      ids.push(id);
+      fresh.push({ id, createdAt: ts, loading: true, ...meta });
+    }
+    state = { items: [...fresh, ...state.items] }; // lô mới lên đầu
+    persist(); emit();
+    return ids;
   },
-  setItem(i: number, patch: Partial<GenItem>) {
-    state.items = state.items.map((it) => (it.index === i ? { ...it, ...patch } : it));
-    emit();
+  setItem(id: number, patch: Partial<GenItem>) {
+    state = { items: state.items.map((it) => (it.id === id ? { ...it, ...patch } : it)) };
+    persist(); emit();
   },
-  done() { state.status = "done"; emit(); },
+  remove(id: number) {
+    state = { items: state.items.filter((it) => it.id !== id) };
+    persist(); emit();
+  },
+  clear() { state = { items: [] }; persist(); emit(); },
 };
 
 export function useCreateStore() {

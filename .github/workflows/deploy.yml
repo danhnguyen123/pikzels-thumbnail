@@ -1,0 +1,60 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: cicd-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Runner GitHub (amd64): BUILD DOCKER (đã gồm build frontend + typecheck) + smoke test.
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t package-studio:ci .
+
+      - name: Smoke test (khởi động container + gọi /api/config)
+        run: |
+          docker run -d --name ps -e APP_HOST=0.0.0.0 -e APP_PORT=8000 \
+            -e PIKZELS_API_KEY=dummy -p 8000:8000 package-studio:ci
+          ok=0
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8000/api/config >/dev/null 2>&1; then ok=1; break; fi
+            sleep 2
+          done
+          docker logs ps
+          docker rm -f ps
+          if [ "$ok" != "1" ]; then echo "Server khong khoi dong duoc"; exit 1; fi
+          echo "Smoke test OK"
+
+  # Chỉ deploy khi push lên main/master và build-test đã pass.
+  deploy:
+    needs: build-test
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: SSH deploy (pull + build + restart trên server)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          script: |
+            set -euo pipefail
+            cd /opt/package-studio
+            git pull --ff-only
+            mkdir -p /mnt/media/package-studio/data /mnt/media/package-studio/output
+            # --network=host để các bước RUN (pip/npm) dùng DNS của host (tránh lỗi resolve).
+            docker buildx use default 2>/dev/null || true
+            docker build --network=host -t package-studio:latest .
+            docker compose up -d
+            docker image prune -f
+            docker compose ps

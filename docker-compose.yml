@@ -1,0 +1,24 @@
+services:
+  package-studio:
+    build: .
+    image: package-studio:latest
+    container_name: package-studio
+    restart: unless-stopped
+    # Gộp env: .env (secret của bạn, scp riêng, KHÔNG commit) + .env.production
+    # (override cho production, có trong repo, không chứa secret). File sau ghi đè file trước.
+    env_file:
+      - .env
+      - .env.production
+    # Cổng public: đổi PUBLISH_PORT trong .env nếu muốn cổng lạ (giảm quét). Container luôn nghe 8000.
+    # Nhớ mở cổng này ở Oracle Security List + ufw (xem DEPLOY.md).
+    ports:
+      - "${PUBLISH_PORT:-8000}:8000"
+    # Dữ liệu bền trên Oracle Block Volume (subfolder cho app này) — KHÔNG mất khi rebuild.
+    volumes:
+      - /mnt/media/package-studio/data:/app/data       # SQLite (pikzels.db) + registry
+      - /mnt/media/package-studio/output:/app/output    # ảnh Gallery đã lưu
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

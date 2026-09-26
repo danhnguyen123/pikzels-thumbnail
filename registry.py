@@ -5,13 +5,15 @@
 - Lần chạy đầu: tự import data/pikzonalities.json + data/history.json (nếu có), giữ file JSON làm backup.
 """
 import json
+import os
 import sqlite3
 import threading
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
-DATA_DIR = Path(__file__).parent / "data"
+# Có thể trỏ ra volume (Docker/cloud) qua env DATA_DIR; mặc định ./data (local).
+DATA_DIR = Path(os.environ.get("DATA_DIR", str(Path(__file__).parent / "data")))
 DB_FILE = DATA_DIR / "pikzels.db"
 PIKZ_FILE = DATA_DIR / "pikzonalities.json"      # backup / nguồn import lần đầu
 HISTORY_FILE = DATA_DIR / "history.json"
