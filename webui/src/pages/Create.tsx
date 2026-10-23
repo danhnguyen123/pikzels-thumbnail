@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Download, Star, Save, Loader2, AlertTriangle, Pencil, Sparkles, Upload, Trash2 } from "lucide-react";
 import { api, type Pikzonality } from "../api";
 import { useConfig, useNav } from "../App";
-import { imgSrc, fileToDataUrl } from "../lib";
+import { imgSrc, imageToDataUrl } from "../lib";
 import { Button, Field, Input, Textarea, Select, Card, Lightbox, useToast } from "../ui";
 import { useI18n } from "../i18n";
 import { createStore, useCreateStore, editTarget, refTarget, type GenItem } from "../store";
@@ -285,7 +285,7 @@ function FileRow({ label, onData }: { label: string; onData: (b64: string) => vo
       <input type="file" accept="image/*" className="hidden"
         onChange={async (e) => {
           const f = e.target.files?.[0];
-          if (f) { setName(f.name); onData(await fileToDataUrl(f)); }
+          if (f) { setName(f.name); onData(await imageToDataUrl(f)); }
         }} />
     </label>
   );

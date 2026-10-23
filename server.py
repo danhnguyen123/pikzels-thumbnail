@@ -292,11 +292,18 @@ def history(limit: int = 24, offset: int = 0,
 @app.get("/api/history/{hid}/image")
 def history_image(hid: int):
     entry = registry.get_history_entry(hid)
-    if not entry or not entry.get("local_path"):
+    lp = entry.get("local_path") if entry else None
+    if not lp:
         raise HTTPException(404, "Not found")
-    p = Path(entry["local_path"])
+    p = Path(lp)
     if not p.is_file():
-        raise HTTPException(404, "File missing")
+        # Fallback: DB có thể lưu path của máy khác (Windows/host). Tìm lại theo tên file
+        # trong OUTPUT_DIR hiện tại (vd copy db sang server) để ảnh vẫn hiển thị.
+        alt = OUTPUT_DIR / Path(lp.replace("\\", "/")).name
+        if alt.is_file():
+            p = alt
+        else:
+            raise HTTPException(404, "File missing")
     return FileResponse(p, media_type="image/png")
 
 

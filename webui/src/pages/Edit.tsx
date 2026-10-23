@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Download, Upload, Pencil, Star, Loader2 } from "lucide-react";
 import { api } from "../api";
-import { fileToDataUrl, imgSrc } from "../lib";
+import { fileToDataUrl, imageToDataUrl, imgSrc } from "../lib";
 import { Button, Card, Field, Input, Textarea, Select, Spinner, Lightbox, useToast } from "../ui";
 import { useConfig } from "../App";
 import { useI18n } from "../i18n";
@@ -58,7 +58,7 @@ export default function Edit() {
         <label className="btn btn-ghost cursor-pointer text-sm mb-3">
           <Upload size={15} /> {s.srcName || t("common.upload")}
           <input type="file" accept="image/*" className="hidden"
-            onChange={async (e) => { const f = e.target.files?.[0]; if (f) { const b = await fileToDataUrl(f); editState.set({ imgB64: b, srcPreview: b, srcName: f.name }); } }} />
+            onChange={async (e) => { const f = e.target.files?.[0]; if (f) { const b = await imageToDataUrl(f); editState.set({ imgB64: b, srcPreview: b, srcName: f.name }); } }} />
         </label>
         {s.srcPreview && (
           <div className="mt-1 mb-3">

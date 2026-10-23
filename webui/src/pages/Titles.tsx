@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Copy, Upload, FileText } from "lucide-react";
 import { api } from "../api";
-import { fileToDataUrl, imgSrc } from "../lib";
+import { imageToDataUrl, imgSrc } from "../lib";
 import { Button, Card, Field, Input, Textarea, Spinner, Lightbox, useToast } from "../ui";
 import { useConfig } from "../App";
 import { useI18n } from "../i18n";
@@ -36,7 +36,7 @@ export default function Titles() {
         <label className="btn btn-ghost cursor-pointer text-sm mb-3">
           <Upload size={15} /> {s.name || t("common.upload")}
           <input type="file" accept="image/*" className="hidden"
-            onChange={async (e) => { const f = e.target.files?.[0]; if (f) { const b = await fileToDataUrl(f); titlesState.set({ b64: b, name: f.name, srcPreview: b }); } }} />
+            onChange={async (e) => { const f = e.target.files?.[0]; if (f) { const b = await imageToDataUrl(f); titlesState.set({ b64: b, name: f.name, srcPreview: b }); } }} />
         </label>
         {s.srcPreview && (
           <div className="mb-3">

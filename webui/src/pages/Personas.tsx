@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { RefreshCw, Trash2, Save, History, RotateCcw, Upload, Plus, Dna } from "lucide-react";
 import { api, type Pikzonality } from "../api";
-import { fileToDataUrl, imgSrc } from "../lib";
+import { imageToDataUrl, imgSrc } from "../lib";
 import { Button, Card, Field, Input, Textarea, Chip, Spinner, Lightbox, useToast } from "../ui";
 import { useConfig } from "../App";
 import { useI18n } from "../i18n";
@@ -31,7 +31,7 @@ export default function Personas() {
   async function create() {
     const urlList = s.urls.split("\n").map((x) => x.trim()).filter(Boolean);
     const body: any = { mode: s.mode, name: s.name, special_instructions: s.instr || null };
-    if (s.files.length === 3) body.image_base64s = await Promise.all(s.files.map(fileToDataUrl));
+    if (s.files.length === 3) body.image_base64s = await Promise.all(s.files.map((f) => imageToDataUrl(f)));
     else if (urlList.length === 3) body.image_urls = urlList;
     else return toast(t("pk.need3"), "error");
     if (!s.name.trim()) return toast(t("pk.needName"), "error");
