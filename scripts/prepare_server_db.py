@@ -2,9 +2,10 @@
 
 DB là nguồn dữ liệu duy nhất (không dùng JSON nữa). Script này:
   1. Checkpoint WAL + copy data/pikzels.db -> backup/server/data/pikzels.db
-  2. Sửa `local_path` của mọi ảnh gallery trong bản copy sang đường dẫn TRÊN SERVER
-     (mặc định /mnt/media/package-studio/output/<tên_file>) để ảnh hiển thị đúng.
-  3. Copy các file ảnh gốc sang backup/server/output/ để đẩy lên server.
+  2. Sửa `local_path` của mọi ảnh gallery trong bản copy sang đường dẫn TRONG CONTAINER
+     (mặc định /app/output/<tên_file>) — vì app FastAPI chạy trong container đọc theo path đó
+     (volume map host /mnt/media/package-studio/output -> /app/output).
+  3. Copy các file ảnh gốc sang backup/server/output/ để đẩy lên host.
 
 Chạy LOCAL (đóng server trước cho chắc):
     python scripts/prepare_server_db.py
@@ -24,7 +25,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 SRC_DB = ROOT / "data" / "pikzels.db"
-DEFAULT_SERVER_OUTPUT = "/mnt/media/package-studio/output"
+# Path mà APP đọc (bên trong container). Volume map host output -> /app/output.
+DEFAULT_SERVER_OUTPUT = "/app/output"
 
 
 def main():
